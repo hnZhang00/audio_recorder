@@ -164,18 +164,53 @@ var mRecorder = function (opt) {
     };
     
     //上传
-    self.upload = function (url, callback) {
-      var fd = new FormData();
-      fd.append('audioData', self.getBlob());
+    self.upload = function (params) {
+      var sucessCallback = params.sucessCallback || function(){}
+      var errorCallback = params.errorCallback || function(){}
+
+      var form = new FormData();
       var xhr = new XMLHttpRequest();
-      if (callback) {
-        xhr.upload.addEventListener('progress', function (e) {callback('uploading', e);}, false);
-        xhr.addEventListener('load', function (e) {callback('ok', e);}, false);
-        xhr.addEventListener('error', function (e) {callback('error', e);}, false);
-        xhr.addEventListener('abort', function (e) {callback('cancel', e);}, false);
+      // 将 Blob 对象转换为 File 对象，解决项目中后台不识别 Blob 的问题
+      var file = new window.File([self.getBlob()], new Date().getTime()+'.mp3', {type: 'mp3'});
+      console.log('file', file)
+      try {
+        form.append('type', 'voice');
+        form.append('Content-Type', 'multipart/form-data');
+        form.append('media', file);
+        // form.append('media', self.getBlob());
+      } catch (err) {
+        errorCallback(err);
+        console.log(err)
+        return;
       }
-      xhr.open('POST', url);
-      xhr.send(fd);
+
+      xhr.onreadystatechange = function() {
+        if (xhr.readyState < 4) {
+          errorCallback();
+          return;
+        }
+        if (xhr.status > 400) {
+          errorCallback({ status: xhr.status });
+          return;
+        }
+        var res = JSON.parse(xhr.responseText) || {};
+        var mediaId = res.mediaId || '';
+        if(!mediaId) {
+          errorCallback();
+        } else {
+          sucessCallback(mediaId);
+        }
+      };
+
+      xhr.onerror = function() {
+        var err = JSON.parse(xhr.responseText);
+        err.status = xhr.status;
+        err.statusText = xhr.statusText;
+        errorCallback(err);
+      };
+
+      xhr.open('POST', params.url, true);
+      xhr.send(form);
     };
     
     //音频采集
